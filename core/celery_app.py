@@ -2,7 +2,7 @@ from celery import Celery
 from celery.schedules import crontab
 from core.config import settings
 
-app = Celery("macro", broker=settings.redis_url, backend=settings.redis_url)
+app = Celery("macro", broker=settings.redis_url, backend=settings.redis_url, include=["core.tasks"])
 
 app.conf.timezone = "UTC"
 
