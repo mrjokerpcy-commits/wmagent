@@ -50,7 +50,10 @@ async def fetch_latest_gdelt_events(limit: int = 100) -> list[Event]:
 
 
 def _parse_gdelt_row(row: list[str]) -> Event | None:
-    # GDELT 2.0 events CSV has 61 columns
+    # GDELT 2.0 events CSV — 61 columns
+    # Columns: 0=EventID, 1=Date(YYYYMMDD), 6=Actor1Name, 16=Actor2Name,
+    #          26=EventCode, 34=AvgTone, 53=ActionGeo_CountryCode,
+    #          56=ActionGeo_Lat, 57=ActionGeo_Long, 60=SourceURL
     if len(row) < 61:
         return None
 
@@ -59,29 +62,32 @@ def _parse_gdelt_row(row: list[str]) -> Event | None:
         lng = float(row[57]) if row[57] else None
         geo = GeoPoint(lat=lat, lng=lng) if lat and lng else None
 
-        country_code = row[51] if row[51] else ""
+        country_code = row[53] if row[53] else ""  # ActionGeo_CountryCode
         avg_tone = float(row[34]) if row[34] else 0.0
-        # Tone is -100 to +100; normalize severity as distance from 0
         severity = min(abs(avg_tone) / 20, 1.0)
 
-        timestamp_str = row[1]  # YYYYMMDDHHMMSS
-        timestamp = datetime.strptime(timestamp_str, "%Y%m%d%H%M%S").replace(
-            tzinfo=timezone.utc
-        )
+        # row[1] is YYYYMMDD, not YYYYMMDDHHMMSS
+        timestamp = datetime.strptime(row[1], "%Y%m%d").replace(tzinfo=timezone.utc)
+
+        actor1 = row[6] if row[6] else "Unknown"
+        actor2 = row[16] if row[16] else "Unknown"
+        location = row[52] if row[52] else country_code  # ActionGeo_FullName
+        event_code = row[26] if row[26] else ""
+        headline = f"{actor1} — {event_code} — {actor2} [{location}]"
 
         return Event(
             timestamp=timestamp,
             source="gdelt",
             source_url=row[60] if row[60] else "",
-            headline=row[60] if row[60] else "",
+            headline=headline,
             body="",
-            category=_gdelt_category(row[26]),
-            subcategory=row[26] if row[26] else "",
+            category=_gdelt_category(event_code),
+            subcategory=event_code,
             geo=geo,
             countries=[country_code] if country_code else [],
             severity=severity,
-            confidence=0.6,  # GDELT baseline confidence
-            raw={"row_index": row[0]},
+            confidence=0.6,
+            raw={"event_id": row[0]},
         )
     except (ValueError, IndexError):
         return None
